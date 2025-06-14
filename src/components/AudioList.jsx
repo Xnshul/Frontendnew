@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 
-
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 const AudioList = () => {
@@ -9,22 +8,9 @@ const AudioList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [playingId, setPlayingId] = useState(null);
-  const audioRefs = useRef({}); 
-
-useEffect(() => {
-  const ids = new Set(audios.map(a => a._id));
-  Object.keys(audioRefs.current).forEach(id => {
-    if (!ids.has(id)) {
-      delete audioRefs.current[id];
-    }
-  });
-}, [audios]);
+  const audioRefs = useRef({});
 
   const itemsPerPage = 4;
-
-  useEffect(() => {
-    fetchAudios();
-  }, []);
 
   const fetchAudios = async () => {
     try {
@@ -35,6 +21,26 @@ useEffect(() => {
     }
   };
 
+  useEffect(() => {
+    fetchAudios();
+
+    const refreshHandler = () => fetchAudios();
+    window.addEventListener('audioUploaded', refreshHandler);
+
+    return () => {
+      window.removeEventListener('audioUploaded', refreshHandler);
+    };
+  }, []);
+
+  useEffect(() => {
+    const ids = new Set(audios.map(a => a._id));
+    Object.keys(audioRefs.current).forEach(id => {
+      if (!ids.has(id)) {
+        delete audioRefs.current[id];
+      }
+    });
+  }, [audios]);
+
   const handleDelete = async (id) => {
     try {
       await axios.delete(`${API_URL}/api/audio/${id}`);
@@ -44,38 +50,36 @@ useEffect(() => {
     }
   };
 
-
-
-const handlePlayPause = (id) => {
-  const audio = audioRefs.current[id];
-
-  if (!audio) {
-    console.warn(`Audio ref for id ${id} not ready`);
-    return;
-  }
-
-  if (playingId && playingId !== id) {
-    const prevAudio = audioRefs.current[playingId];
-    if (prevAudio) {
-      prevAudio.pause();
-      prevAudio.currentTime = 0;
+  const handlePlayPause = (id) => {
+    const audio = audioRefs.current[id];
+    if (!audio) {
+      console.warn(`Audio ref for id ${id} not ready`);
+      return;
     }
-  }
 
-  if (audio.paused) {
-    audio
-      .play()
-      .then(() => {
-        setPlayingId(id);
-      })
-      .catch((err) => {
-        console.error('Play error:', err);
-      });
-  } else {
-    audio.pause();
-    setPlayingId(null);
-  }
-};
+    if (playingId && playingId !== id) {
+      const prevAudio = audioRefs.current[playingId];
+      if (prevAudio) {
+        prevAudio.pause();
+        prevAudio.currentTime = 0;
+      }
+    }
+
+    if (audio.paused) {
+      audio
+        .play()
+        .then(() => {
+          setPlayingId(id);
+        })
+        .catch((err) => {
+          console.error('Play error:', err);
+        });
+    } else {
+      audio.pause();
+      setPlayingId(null);
+    }
+  };
+
   const filteredAudios = audios.filter(audio =>
     audio.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -85,7 +89,6 @@ const handlePlayPause = (id) => {
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
-
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
@@ -133,6 +136,7 @@ const handlePlayPause = (id) => {
           </div>
         ))}
       </div>
+
       <div className="flex justify-center mt-4 gap-2">
         {[...Array(totalPages).keys()].map(num => (
           <button
