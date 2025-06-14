@@ -3,6 +3,7 @@ import axios from 'axios';
 import AudioRecorder from './components/AudioRecorder';
 import AudioList from './components/AudioList';
 
+
 const App = () => {
   const [audioList, setAudioList] = useState([]);
 
@@ -18,8 +19,11 @@ const App = () => {
   useEffect(() => {
     fetchAudioList();
   }, []);
+  
+
 
   return (
+    
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 p-6">
       <AudioRecorder onUploadSuccess={fetchAudioList} />
       <AudioList audioList={audioList} />

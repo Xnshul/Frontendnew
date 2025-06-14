@@ -1,58 +1,74 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 
-const MAX_DURATION = 31;
-const API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.PORT;
+const MAX_DURATION = 30;
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 const AudioRecorder = ({ onUploadSuccess }) => {
   const [recording, setRecording] = useState(false);
   const [paused, setPaused] = useState(false);
   const [title, setTitle] = useState('');
+  const [tags, setTags] = useState('');
   const [timeLeft, setTimeLeft] = useState(MAX_DURATION);
-  const [awaitingTitle, setAwaitingTitle] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
   const [blob, setBlob] = useState(null);
+  const [awaitingTitle, setAwaitingTitle] = useState(false);
   const chunks = useRef([]);
-  const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
   const analyserRef = useRef(null);
   const canvasRef = useRef(null);
   const timerRef = useRef(null);
 
-  // Visualization
   useEffect(() => {
     let rafId;
-    const draw = () => {
+    const drawCircularWaveform = () => {
       const canvas = canvasRef.current;
-      const ctx = canvas?.getContext('2d');
+      const ctx = canvas.getContext('2d');
       const analyser = analyserRef.current;
       if (!canvas || !ctx || !analyser) return;
 
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const width = canvas.width;
+      const height = canvas.height;
+      const radius = Math.min(width, height) / 3;
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
       analyser.getByteFrequencyData(dataArray);
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const barWidth = (canvas.width / dataArray.length) * 2.5;
-      let x = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        const barHeight = dataArray[i];
-        ctx.fillStyle = `hsl(${i % 360}, 100%, 60%)`;
-        ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-        x += barWidth + 1;
+      ctx.clearRect(0, 0, width, height);
+      ctx.save();
+      ctx.translate(width / 2, height / 2);
+      ctx.beginPath();
+      ctx.shadowBlur = 25;
+      ctx.shadowColor = '#00f0ff';
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 2;
+
+      for (let i = 0; i < bufferLength; i++) {
+        const angle = (i / bufferLength) * 2 * Math.PI;
+        const amplitude = dataArray[i] / 255;
+        const x = Math.cos(angle) * (radius + amplitude * 50);
+        const y = Math.sin(angle) * (radius + amplitude * 50);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
       }
 
-      rafId = requestAnimationFrame(draw);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+
+      rafId = requestAnimationFrame(drawCircularWaveform);
     };
 
-    if (recording) draw();
+    if (recording && analyserRef.current) drawCircularWaveform();
     return () => cancelAnimationFrame(rafId);
   }, [recording]);
 
   const startRecording = async () => {
     try {
       setTitle('');
-      setBlob(null);
+      setTags('');
       setAwaitingTitle(false);
-
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
@@ -63,28 +79,26 @@ const AudioRecorder = ({ onUploadSuccess }) => {
       analyserRef.current = analyser;
       source.connect(analyser);
 
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
+      const recorder = new MediaRecorder(stream);
+      setMediaRecorder(recorder);
+
       chunks.current = [];
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.current.push(e.data);
-      };
-
-      mediaRecorder.onstop = () => {
+      recorder.ondataavailable = (e) => e.data.size > 0 && chunks.current.push(e.data);
+      recorder.onstop = () => {
         const audioBlob = new Blob(chunks.current, { type: 'audio/webm' });
         setBlob(audioBlob);
-        setAwaitingTitle(true); // ✅ Now the title input shows
+        setAwaitingTitle(true);
       };
 
-      mediaRecorder.start();
+      recorder.start();
       setRecording(true);
+      setPaused(false);
       setTimeLeft(MAX_DURATION);
 
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
-            stopRecording(); // ✅ Stop triggers .onstop
+            stopRecording();
             return 0;
           }
           return prev - 1;
@@ -92,40 +106,31 @@ const AudioRecorder = ({ onUploadSuccess }) => {
       }, 1000);
     } catch (err) {
       console.error('Microphone error:', err);
-      alert('Microphone access denied or unavailable.');
+      alert('Microphone access denied or not available.');
     }
   };
 
   const stopRecording = () => {
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== 'inactive') {
-      recorder.stop(); // ✅ this triggers .onstop and sets blob + awaitingTitle
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+      streamRef.current.getTracks().forEach((track) => track.stop());
     }
-    streamRef.current?.getTracks().forEach((track) => track.stop());
     setRecording(false);
     setPaused(false);
     clearInterval(timerRef.current);
   };
 
-  const cancelRecording = () => {
-    stopRecording();
-    setTitle('');
-    setBlob(null);
-    setAwaitingTitle(false);
-    setTimeLeft(MAX_DURATION);
-  };
-
   const pauseRecording = () => {
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.pause();
+    if (mediaRecorder?.state === 'recording') {
+      mediaRecorder.pause();
       setPaused(true);
       clearInterval(timerRef.current);
     }
   };
 
   const resumeRecording = () => {
-    if (mediaRecorderRef.current?.state === 'paused') {
-      mediaRecorderRef.current.resume();
+    if (mediaRecorder?.state === 'paused') {
+      mediaRecorder.resume();
       setPaused(false);
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
@@ -139,12 +144,19 @@ const AudioRecorder = ({ onUploadSuccess }) => {
     }
   };
 
+  const cancelRecording = () => {
+    stopRecording();
+    setBlob(null);
+    setTitle('');
+    setAwaitingTitle(false);
+  };
+
   const handleUpload = async () => {
-    if (!title || !blob) return;
+    if (!blob || !title) return;
     const formData = new FormData();
     formData.append('title', title);
+    formData.append('tags', tags);
     formData.append('audio', blob, 'recording.webm');
-
     try {
       await axios.post(`${API_URL}/api/audio`, formData);
       setTitle('');
@@ -152,104 +164,77 @@ const AudioRecorder = ({ onUploadSuccess }) => {
       setAwaitingTitle(false);
       setTimeLeft(MAX_DURATION);
       onUploadSuccess?.();
+      
     } catch (err) {
       console.error(err);
       alert('Upload failed');
-    }
+  
+     }
   };
 
   return (
-    <div className="p-4 rounded-2xl bg-white dark:bg-gray-800 shadow-xl max-w-md mx-auto space-y-4">
-      <h2 className="text-xl font-bold text-center text-gray-800 dark:text-gray-100">🎤 Audio Recorder</h2>
+  <div className="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-gray-900 via-purple-900 to-black text-white p-6">
+    <h1 className="heading"> Audio Recorder</h1>
 
-      {awaitingTitle && (
+    <div className="p-2 rounded-full bg-gradient-to-r from-blue-500 via-purple-600 to-pink-500">
+      <canvas ref={canvasRef} width={300} height={300} className="rounded-full bg-black" />
+    </div>
+
+    {awaitingTitle && (
+      <div className="mt-4 flex flex-col items-center gap-2">
         <input
-          className="w-full px-3 py-2 rounded border dark:bg-gray-700 dark:text-white"
-          placeholder="Enter a title..."
+          type="text"
+          placeholder="Enter title..."
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          className="p-2 rounded bg-gray-800 text-white w-64 border border-purple-500"
         />
-      )}
-
-      <canvas
-        ref={canvasRef}
-        width={300}
-        height={80}
-        className="w-full rounded bg-gray-100 dark:bg-gray-700"
-      />
-
-      <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5">
-        <div
-          className="bg-blue-500 h-2.5 rounded-full"
-          style={{ width: `${((MAX_DURATION - timeLeft) / MAX_DURATION) * 100}%` }}
-        ></div>
-      </div>
-
-      <div className="flex flex-wrap justify-center gap-2">
-        {!recording && !blob && !awaitingTitle && (
+        <div className="flex gap-3 mt-2">
           <button
-            onClick={startRecording}
-            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-          >
-            Start
+            onClick={handleUpload}
+            className="hover:bg-purple-700 bg-transparent text-purple-700 hover:text-black px-4 py-2 rounded-full"
+            disabled={!title}
+
+          >Submit
           </button>
-        )}
-
-        {recording && !paused && (
-          <>
-            <button
-              onClick={pauseRecording}
-              className="bg-yellow-400 text-white px-4 py-2 rounded hover:bg-yellow-500"
-            >
-              Pause
-            </button>
-            <button
-              onClick={stopRecording}
-              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-            >
-              Stop
-            </button>
-          </>
-        )}
-
-        {recording && paused && (
-          <>
-            <button
-              onClick={resumeRecording}
-              className="bg-blue-400 text-white px-4 py-2 rounded hover:bg-blue-500"
-            >
-              Resume
-            </button>
-            <button
-              onClick={stopRecording}
-              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-            >
-              Stop
-            </button>
-          </>
-        )}
-
-        {(recording || blob || awaitingTitle) && (
           <button
             onClick={cancelRecording}
-            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+            className="hover:bg-red-600 text-red-600 hover:text-black bg-transparent px-4 py-2 rounded-full"
           >
             Cancel
           </button>
-        )}
-
-        {awaitingTitle && blob && (
-          <button
-            onClick={handleUpload}
-            disabled={!title}
-            className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 hover:white"
-          >
-            Submit
-          </button>
-        )}
+        </div>
       </div>
+    )}
+
+    <div className="mt-4 flex gap-3 flex-wrap justify-center">
+      {!recording && !blob && !awaitingTitle && (
+        <button onClick={startRecording} className="hover:bg-green-600 hover:text-black text-green-600 bg-transparent px-4 py-2 rounded-full">Start</button>
+      )}
+      {recording && !paused && (
+        <>
+          <button onClick={pauseRecording} className="hover:bg-yellow-500 bg-transparent text-yellow-500 hover:text-black px-4 py-2 rounded-full">Pause</button>
+          <button onClick={stopRecording} className="hover:bg-blue-600 bg-transparent hover:text-black text-blue-600 px-4 py-2 rounded-full">Stop</button>
+        </>
+      )}
+      {recording && paused && (
+        <>
+          <button onClick={resumeRecording} className="bg-transparent text-blue-400 px-4 py-2 rounded-full hover:bg-blue-400 hover:text-black">Resume</button>
+          <button onClick={stopRecording} className="hover:bg-blue-600 hover:text-black bg-transparent text-blue-600 px-4 py-2 rounded-full">Stop</button>
+        </>
+      )}
+      {(recording || blob) && !awaitingTitle && (
+        <button onClick={cancelRecording} className="bg-transparent text-red-600 hover:bg-red-600 hover:text-black px-4 py-2 rounded-full">Cancel</button>
+      )}
     </div>
-  );
+
+    {recording && (
+      <div className="mt-2 text-sm text-purple-300">Time left: {timeLeft}s</div>
+    )}
+  </div>
+);
+
+
 };
 
 export default AudioRecorder;
