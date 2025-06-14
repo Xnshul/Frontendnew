@@ -13,6 +13,7 @@ const AudioRecorder = ({ onUploadSuccess }) => {
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [blob, setBlob] = useState(null);
   const [awaitingTitle, setAwaitingTitle] = useState(false);
+
   const chunks = useRef([]);
   const streamRef = useRef(null);
   const analyserRef = useRef(null);
@@ -165,77 +166,97 @@ const AudioRecorder = ({ onUploadSuccess }) => {
       setTimeLeft(MAX_DURATION);
       onUploadSuccess?.();
       window.dispatchEvent(new Event('audioUploaded'));
-      
     } catch (err) {
       console.error(err);
       alert('Upload failed');
-  
-     }
+    }
   };
 
   return (
-  <div className="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-gray-900 via-purple-900 to-black text-white p-6">
-    <h1 className="heading"> Audio Recorder</h1>
+    <div className="min-h-screen flex flex-col items-center bg-gradient-to-br from-gray-900 via-purple-900 to-black text-white px-4 py-6">
+      <h1 className="text-xl md:text-3xl font-bold mb-4 text-center">Audio Recorder</h1>
 
-    <div className="p-2 rounded-full bg-gradient-to-r from-blue-500 via-purple-600 to-pink-500">
-      <canvas ref={canvasRef} width={300} height={300} className="rounded-full bg-black" />
-    </div>
-
-    {awaitingTitle && (
-      <div className="mt-4 flex flex-col items-center gap-2">
-        <input
-          type="text"
-          placeholder="title required..."
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="p-2 rounded bg-gray-800 text-white w-64 border border-purple-500"
+      <div className="p-2 rounded-full bg-gradient-to-r from-blue-500 via-purple-600 to-pink-500 mb-4">
+        <canvas
+          ref={canvasRef}
+          width={250}
+          height={250}
+          className="rounded-full bg-black w-[250px] h-[250px] md:w-[300px] md:h-[300px]"
         />
-        <div className="flex gap-3 mt-2">
-          <button
-            onClick={handleUpload}
-            className="hover:bg-purple-700 bg-transparent text-purple-700 hover:text-black px-4 py-2 rounded-full"
-            disabled={!title}
+      </div>
 
-          >Submit
+      {awaitingTitle && (
+        <div className="mt-4 w-full max-w-sm flex flex-col gap-3 items-center">
+          <input
+            type="text"
+            placeholder="Enter title..."
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="p-2 rounded bg-gray-800 text-white w-full border border-purple-500"
+          />
+          <input
+            type="text"
+            placeholder="Enter tags (comma separated)"
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            className="p-2 rounded bg-gray-800 text-white w-full border border-purple-500"
+          />
+          <div className="flex flex-wrap justify-center gap-2 mt-2 w-full">
+            <button
+              onClick={handleUpload}
+              className="w-full sm:w-auto hover:bg-purple-700 bg-transparent text-purple-400 hover:text-black px-4 py-2 rounded-full"
+              disabled={!title}
+            >
+              Submit
+            </button>
+            <button
+              onClick={cancelRecording}
+              className="w-full sm:w-auto hover:bg-red-600 text-red-500 hover:text-black bg-transparent px-4 py-2 rounded-full"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-wrap justify-center gap-3 w-full max-w-sm">
+        {!recording && !blob && !awaitingTitle && (
+          <button onClick={startRecording} className="w-full sm:w-auto hover:bg-green-600 text-green-400 hover:text-black bg-transparent px-4 py-2 rounded-full">
+            Start
           </button>
-          <button
-            onClick={cancelRecording}
-            className="hover:bg-red-600 text-red-600 hover:text-black bg-transparent px-4 py-2 rounded-full"
-          >
+        )}
+        {recording && !paused && (
+          <>
+            <button onClick={pauseRecording} className="hover:bg-yellow-500 text-yellow-400 hover:text-black bg-transparent px-4 py-2 rounded-full">
+              Pause
+            </button>
+            <button onClick={stopRecording} className="hover:bg-blue-600 text-blue-400 hover:text-black bg-transparent px-4 py-2 rounded-full">
+              Stop
+            </button>
+          </>
+        )}
+        {recording && paused && (
+          <>
+            <button onClick={resumeRecording} className="hover:bg-blue-500 text-blue-300 hover:text-black bg-transparent px-4 py-2 rounded-full">
+              Resume
+            </button>
+            <button onClick={stopRecording} className="hover:bg-blue-600 text-blue-400 hover:text-black bg-transparent px-4 py-2 rounded-full">
+              Stop
+            </button>
+          </>
+        )}
+        {(recording || blob) && !awaitingTitle && (
+          <button onClick={cancelRecording} className="hover:bg-red-600 text-red-500 hover:text-black bg-transparent px-4 py-2 rounded-full">
             Cancel
           </button>
-        </div>
+        )}
       </div>
-    )}
 
-    <div className="mt-4 flex gap-3 flex-wrap justify-center">
-      {!recording && !blob && !awaitingTitle && (
-        <button onClick={startRecording} className="hover:bg-green-600 hover:text-black text-green-600 bg-transparent px-4 py-2 rounded-full">Start</button>
-      )}
-      {recording && !paused && (
-        <>
-          <button onClick={pauseRecording} className="hover:bg-yellow-500 bg-transparent text-yellow-500 hover:text-black px-4 py-2 rounded-full">Pause</button>
-          <button onClick={stopRecording} className="hover:bg-blue-600 bg-transparent hover:text-black text-blue-600 px-4 py-2 rounded-full">Stop</button>
-        </>
-      )}
-      {recording && paused && (
-        <>
-          <button onClick={resumeRecording} className="bg-transparent text-blue-400 px-4 py-2 rounded-full hover:bg-blue-400 hover:text-black">Resume</button>
-          <button onClick={stopRecording} className="hover:bg-blue-600 hover:text-black bg-transparent text-blue-600 px-4 py-2 rounded-full">Stop</button>
-        </>
-      )}
-      {(recording || blob) && !awaitingTitle && (
-        <button onClick={cancelRecording} className="bg-transparent text-red-600 hover:bg-red-600 hover:text-black px-4 py-2 rounded-full">Cancel</button>
+      {recording && (
+        <div className="mt-2 text-sm text-purple-300">Time left: {timeLeft}s</div>
       )}
     </div>
-
-    {recording && (
-      <div className="mt-2 text-sm text-purple-300">Time left: {timeLeft}s</div>
-    )}
-  </div>
-);
-
-
+  );
 };
 
 export default AudioRecorder;
