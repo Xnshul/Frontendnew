@@ -164,6 +164,7 @@ const AudioRecorder = ({ onUploadSuccess }) => {
       setAwaitingTitle(false);
       setTimeLeft(MAX_DURATION);
       onUploadSuccess?.();
+      window.dispatchEvent(new Event('audioUploaded'));
       
     } catch (err) {
       console.error(err);
@@ -184,7 +185,7 @@ const AudioRecorder = ({ onUploadSuccess }) => {
       <div className="mt-4 flex flex-col items-center gap-2">
         <input
           type="text"
-          placeholder="Enter title..."
+          placeholder="title required..."
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           className="p-2 rounded bg-gray-800 text-white w-64 border border-purple-500"
